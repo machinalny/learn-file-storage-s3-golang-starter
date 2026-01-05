@@ -46,11 +46,11 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 
 	videoFile, imageHeader, err := r.FormFile("video")
-	defer videoFile.Close()
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to read video file", err)
 		return
 	}
+	defer videoFile.Close()
 
 	videoMetadata, err := cfg.db.GetVideo(videoID)
 
@@ -68,7 +68,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	tempFile, err := os.CreateTemp("", "tubely-upload.mp4")
+	tempFile, err := os.CreateTemp("", "tubely-upload*.mp4")
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
@@ -82,15 +82,30 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Unable to save video file", err)
 		return
 	}
+
+	aspectRatio, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to retrieve aspect ratio", err)
+		return
+	}
+
+	aspectRatioPrefix := "other"
+	switch aspectRatio {
+	case "9:16":
+		aspectRatioPrefix = "portrait"
+	case "16:9":
+		aspectRatioPrefix = "landscape"
+	}
+
 	randSlice := [32]byte{}
 	_, _ = rand.Read(randSlice[:])
-	randomFileName := base64.RawURLEncoding.EncodeToString(randSlice[:]) + ".mp4"
+	randomFileName := aspectRatioPrefix + "/" + base64.RawURLEncoding.EncodeToString(randSlice[:]) + ".mp4"
 
 	tempFile.Seek(0, io.SeekStart)
 	cfg.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: &cfg.s3Bucket,
-		Key: &randomFileName,
-		Body: tempFile,
+		Bucket:      &cfg.s3Bucket,
+		Key:         &randomFileName,
+		Body:        tempFile,
 		ContentType: &mimeType,
 	})
 
