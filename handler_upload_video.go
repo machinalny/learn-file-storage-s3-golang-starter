@@ -97,15 +97,27 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		aspectRatioPrefix = "landscape"
 	}
 
+	processedVideoName, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to process video", err)
+		return
+	}
+
 	randSlice := [32]byte{}
 	_, _ = rand.Read(randSlice[:])
 	randomFileName := aspectRatioPrefix + "/" + base64.RawURLEncoding.EncodeToString(randSlice[:]) + ".mp4"
 
-	tempFile.Seek(0, io.SeekStart)
+	processedVideoFile, err := os.Open(processedVideoName)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to process video", err)
+		return
+	}
+	defer processedVideoFile.Close()
+
 	cfg.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &randomFileName,
-		Body:        tempFile,
+		Body:        processedVideoFile,
 		ContentType: &mimeType,
 	})
 
