@@ -36,7 +36,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
+	fmt.Println("uploading video", videoID, "by user", userID)
 
 	maxMemory := 1 << 30
 	err = r.ParseMultipartForm(int64(maxMemory))
@@ -121,14 +121,19 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		ContentType: &mimeType,
 	})
 
-	videoUrl := fmt.Sprintf("http://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, randomFileName)
+	videoUrl := fmt.Sprintf("%s,%s", cfg.s3Bucket, randomFileName)
 	videoMetadata.VideoURL = &videoUrl
+
+	videoMetadata, err = cfg.dbVideoToSignedVideo(videoMetadata)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to sign video", err)
+		return
+	}
 
 	err = cfg.db.UpdateVideo(videoMetadata)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Video update issue", err)
 		return
 	}
-
 	respondWithJSON(w, http.StatusOK, videoMetadata)
 }
